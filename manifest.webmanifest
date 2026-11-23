@@ -1,0 +1,11 @@
+{
+  "name": "TRON: Light Cycle",
+  "short_name": "Light Cycle",
+  "description": "A neon light-cycle survival game in a 72 by 72 arena.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#020509",
+  "theme_color": "#03070b"
+}

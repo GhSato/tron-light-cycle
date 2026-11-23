@@ -1,0 +1,696 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#03070b">
+  <meta name="description" content="A neon light-cycle survival game in a 72 by 72 arena.">
+  <title>TRON: Light Cycle</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <style>
+    :root {
+      color-scheme: dark;
+      --cyan: #00efff;
+      --panel: rgba(3, 10, 17, .78);
+      --line: rgba(0, 239, 255, .35);
+      font-family: "Arial Narrow", "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #020509; }
+    body { color: #e8fbff; user-select: none; -webkit-user-select: none; touch-action: none; }
+    #game { position: fixed; inset: 0; overflow: hidden; background: radial-gradient(ellipse at 50% 45%, #07131d, #020509 76%); }
+    canvas#view { display: block; width: 100%; height: 100%; }
+    .hud { position: absolute; z-index: 2; pointer-events: none; text-transform: uppercase; letter-spacing: .12em; }
+    #brand { top: max(16px, env(safe-area-inset-top)); left: max(18px, env(safe-area-inset-left)); color: var(--cyan); font-size: clamp(14px, 2vw, 21px); font-weight: 800; text-shadow: 0 0 14px #00d9ff; }
+    #stats { top: max(16px, env(safe-area-inset-top)); right: max(18px, env(safe-area-inset-right)); display: flex; gap: clamp(12px, 3vw, 32px); text-align: right; }
+    .stat { min-width: 62px; color: #8ba7b5; font-size: 10px; }
+    .stat strong { display: block; margin-top: 5px; color: white; font-size: clamp(16px, 2.4vw, 24px); letter-spacing: .08em; text-shadow: 0 0 12px rgba(0,239,255,.55); }
+    #score { color: var(--cyan) !important; }
+    #life-display { color: #ff526d !important; letter-spacing: .18em; }
+    #help { left: max(18px, env(safe-area-inset-left)); bottom: max(18px, env(safe-area-inset-bottom)); color: #90aebb; font-size: 10px; line-height: 1.7; }
+    #camera-label { right: max(18px, env(safe-area-inset-right)); bottom: max(20px, env(safe-area-inset-bottom)); color: #688493; font-size: 10px; }
+    #map-frame { position: absolute; z-index: 2; right: max(18px, env(safe-area-inset-right)); top: 82px; width: clamp(96px, 15vw, 150px); aspect-ratio: 1; border: 1px solid rgba(0,239,255,.55); background: rgba(0,8,14,.78); box-shadow: 0 0 16px rgba(0,206,255,.14), inset 0 0 18px rgba(0,206,255,.08); }
+    #minimap { width: 100%; height: 100%; display: block; }
+    #status { position: absolute; z-index: 3; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(1,5,10,.35); text-align: center; pointer-events: none; }
+    #status-card { max-width: 560px; padding: clamp(20px, 5vw, 38px); border: 1px solid var(--line); background: rgba(2,8,14,.83); box-shadow: 0 0 45px rgba(0,184,255,.13), inset 0 0 35px rgba(0,184,255,.06); backdrop-filter: blur(7px); }
+    #status-title { margin: 0 0 12px; color: white; font-size: clamp(27px, 7vw, 62px); font-weight: 900; letter-spacing: .12em; text-shadow: 0 0 22px var(--cyan); }
+    #status-copy { margin: 0; color: #b6d2de; font-size: clamp(12px, 2vw, 15px); line-height: 1.7; letter-spacing: .05em; }
+    #status-action { margin-top: 18px; color: var(--cyan); font-size: 12px; letter-spacing: .17em; }
+    #mobile-controls { display: none; position: absolute; z-index: 4; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); gap: 18px; }
+    .turn-button { width: 64px; height: 54px; border: 1px solid rgba(0,239,255,.65); border-radius: 4px; background: rgba(1,14,23,.78); color: var(--cyan); font-size: 26px; box-shadow: 0 0 16px rgba(0,210,255,.15); touch-action: manipulation; }
+    .turn-button:active { background: rgba(0,180,220,.3); }
+    @media (pointer: coarse), (max-width: 700px) {
+      #mobile-controls { display: flex; }
+      #help { bottom: calc(max(18px, env(safe-area-inset-bottom)) + 62px); font-size: 9px; max-width: 115px; }
+      #camera-label { bottom: calc(max(20px, env(safe-area-inset-bottom)) + 62px); font-size: 9px; }
+      #map-frame { top: 74px; }
+    }
+    @media (max-height: 480px) and (orientation: landscape) {
+      #stats { top: 10px; } #brand { top: 10px; }
+      #map-frame { top: 48px; width: 90px; }
+      #mobile-controls { bottom: 8px; }
+      .turn-button { height: 44px; }
+      #help, #camera-label { bottom: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <main id="game" aria-label="TRON Light Cycle game">
+    <canvas id="view" aria-label="3D light cycle arena"></canvas>
+    <div id="brand" class="hud">TRON <span style="color:#eafaff">/</span> LIGHT CYCLE</div>
+    <div id="stats" class="hud">
+      <div class="stat">Score<strong id="score">000000</strong></div>
+      <div class="stat">Lives<strong id="life-display">♥ ♥ ♥</strong></div>
+      <div class="stat">Round<strong id="round">01</strong></div>
+    </div>
+    <div id="map-frame"><canvas id="minimap" aria-label="Arena minimap"></canvas></div>
+    <div id="help" class="hud">← → / A D TURN<br>P PAUSE · C CAMERA</div>
+    <div id="camera-label" class="hud">CHASE CAM · C TO SWITCH</div>
+    <div id="status">
+      <div id="status-card">
+        <h1 id="status-title">LIGHT CYCLE</h1>
+        <p id="status-copy">Outmaneuver the grid. Leave no way out.</p>
+        <div id="status-action">PRESS ENTER OR TAP TO START</div>
+      </div>
+    </div>
+    <div id="mobile-controls" aria-label="Turn controls">
+      <button class="turn-button" id="turn-left" aria-label="Turn left">↶</button>
+      <button class="turn-button" id="turn-right" aria-label="Turn right">↷</button>
+    </div>
+  </main>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+  (() => {
+    'use strict';
+    const SIZE = 72;
+    const CELL = 0.75;
+    const HALF = (SIZE - 1) / 2;
+    const COLORS = [0x00efff, 0xff7629, 0xff27bd, 0xffe536];
+    const COLOR_CSS = ['#00efff', '#ff7629', '#ff27bd', '#ffe536'];
+    const DIRS = [{x:1,z:0},{x:0,z:1},{x:-1,z:0},{x:0,z:-1}];
+    const canvas = document.getElementById('view');
+    const mapCanvas = document.getElementById('minimap');
+    const mapCtx = mapCanvas.getContext('2d');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x020509);
+    scene.fog = new THREE.FogExp2(0x020509, 0.0085);
+    const camera = new THREE.PerspectiveCamera(54, 1, 0.1, 180);
+    const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false, powerPreference:'high-performance'});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+    renderer.shadowMap.enabled = false;
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.18;
+
+    scene.add(new THREE.HemisphereLight(0x9acfff, 0x101827, 1.1));
+    const ambient = new THREE.AmbientLight(0x526d85, 0.48);
+    scene.add(ambient);
+    const cyanLight = new THREE.PointLight(0x00cfff, 34, 30);
+    cyanLight.position.set(0, 13, 0);
+    scene.add(cyanLight);
+
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(SIZE * CELL, SIZE * CELL),
+      new THREE.MeshStandardMaterial({color:0x03080e, roughness:0.92, metalness:0.2})
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -0.035;
+    scene.add(floor);
+    const grid = new THREE.GridHelper(SIZE * CELL, SIZE, 0x087d99, 0x12323d);
+    grid.position.y = 0;
+    const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material];
+    gridMaterials.forEach(m => { m.transparent = true; m.opacity = 0.4; });
+    scene.add(grid);
+
+    const arenaLimit = HALF * CELL + CELL * 0.5;
+    const boundary = new THREE.Group();
+    const wallMaterial = new THREE.MeshBasicMaterial({color:0x00bce8, transparent:true, opacity:.48});
+    const wallGlow = new THREE.MeshBasicMaterial({color:0x007bff, transparent:true, opacity:.12});
+    for (const [x,z,sx,sz] of [
+      [0,-arenaLimit,SIZE*CELL,.055],[0,arenaLimit,SIZE*CELL,.055],
+      [-arenaLimit,0,.055,SIZE*CELL],[arenaLimit,0,.055,SIZE*CELL]
+    ]) {
+      const line = new THREE.Mesh(new THREE.BoxGeometry(sx,.16,sz), wallMaterial);
+      line.position.set(x,.06,z); boundary.add(line);
+      const glow = new THREE.Mesh(new THREE.BoxGeometry(sx*1.7,.08,sz*1.7), wallGlow);
+      glow.position.set(x,.02,z); boundary.add(glow);
+    }
+    scene.add(boundary);
+
+    const trailRoot = new THREE.Group();
+    scene.add(trailRoot);
+    const trailMaterials = COLORS.map(color => new THREE.MeshBasicMaterial({color, transparent:true, opacity:.87}));
+    const trailGlowMaterials = COLORS.map(color => new THREE.MeshBasicMaterial({color, transparent:true, opacity:.22}));
+    const occupancy = new Map();
+    const bikes = [];
+    let player;
+    let state = 'ready';
+    let score = 0;
+    let lives = 3;
+    let round = 1;
+    let tick = 0;
+    let accumulator = 0;
+    let countdownAt = 0;
+    let stateAt = 0;
+    let lastFrame = 0;
+    let cameraMode = 0;
+    let audio = null;
+    let engineOsc = null;
+    let engineGain = null;
+    let pointerStart = null;
+
+    function worldX(x) { return (x - HALF) * CELL; }
+    function worldZ(z) { return (z - HALF) * CELL; }
+    function cellKey(x,z) { return x + ',' + z; }
+    function currentSpeed() {
+      return Math.max(0.105, 0.205 - Math.floor(tick / 40) * 0.004 - (round - 1) * 0.004);
+    }
+
+    function makeBikeMesh(color) {
+      const group = new THREE.Group();
+      const paint = new THREE.MeshStandardMaterial({color, emissive:color, emissiveIntensity:.23, metalness:.7, roughness:.34, flatShading:true});
+      const darkPaint = new THREE.MeshStandardMaterial({color:0x101a22, emissive:color, emissiveIntensity:.09, metalness:.78, roughness:.3, flatShading:true});
+      const glow = new THREE.MeshBasicMaterial({color});
+      const dimGlow = new THREE.MeshBasicMaterial({color, transparent:true, opacity:.45});
+      const addShape = (points, depth, material, z=0) => {
+        const shape = new THREE.Shape();
+        shape.moveTo(points[0][0], points[0][1]);
+        for (let i=1;i<points.length;i++) shape.lineTo(points[i][0],points[i][1]);
+        shape.closePath();
+        const geometry = new THREE.ExtrudeGeometry(shape, {depth, bevelEnabled:true, bevelSegments:1, steps:1, bevelSize:.035, bevelThickness:.025, curveSegments:2});
+        geometry.translate(0,0,z-depth/2);
+        const mesh = new THREE.Mesh(geometry,material);
+        group.add(mesh);
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({color, transparent:true, opacity:.8}));
+        group.add(edges);
+        return mesh;
+      };
+      const wheelGroups = [];
+      for (const x of [-.82,.82]) {
+        const wheel = new THREE.Group();
+        wheel.position.set(x,.5,0);
+        const tire = new THREE.Mesh(new THREE.CylinderGeometry(.48,.48,.14,6,1,false), darkPaint);
+        tire.rotation.x = Math.PI/2;
+        wheel.add(tire);
+        const rim = new THREE.Mesh(new THREE.TorusGeometry(.385,.033,4,6),glow);
+        wheel.add(rim);
+        const inner = new THREE.Mesh(new THREE.TorusGeometry(.27,.018,3,6),dimGlow);
+        wheel.add(inner);
+        for (let i=0;i<5;i++) {
+          const a = i * Math.PI*2/5;
+          const spoke = new THREE.Mesh(new THREE.BoxGeometry(.28,.025,.025),glow);
+          spoke.position.set(Math.cos(a)*.14,Math.sin(a)*.14,0);
+          spoke.rotation.z = a;
+          wheel.add(spoke);
+        }
+        const hub = new THREE.Mesh(new THREE.CylinderGeometry(.115,.115,.18,6),paint);
+        hub.rotation.x = Math.PI/2;
+        wheel.add(hub);
+        group.add(wheel);
+        wheelGroups.push(wheel);
+      }
+
+      addShape([[-1.28,.52],[-1.12,.79],[-.65,.83],[-.26,.91],[.24,.86],[.75,.71],[1.18,.66],[1.38,.54],[1.12,.48],[-.96,.48]],.37,paint);
+      addShape([[.23,.87],[.65,.99],[1.12,.79],[1.3,.66],[.82,.73]],.27,darkPaint,.015);
+      addShape([[-1.32,.56],[-1.05,.72],[-.9,.7],[-.82,.54]],.24,darkPaint,0);
+      addShape([[-.62,.84],[-.42,1.05],[.16,1.1],[.51,.91],[.2,.89],[-.15,.93]],.26,paint,0);
+      const windscreen = new THREE.Mesh(new THREE.BoxGeometry(.32,.23,.22),new THREE.MeshBasicMaterial({color:0x8af6ff, transparent:true, opacity:.64}));
+      windscreen.position.set(.48,1.04,0);
+      windscreen.rotation.z = -.45;
+      group.add(windscreen);
+      const tailLine = new THREE.Mesh(new THREE.BoxGeometry(.08,.27,.39),glow);
+      tailLine.position.set(-1.22,.64,0);
+      group.add(tailLine);
+      const headlight = new THREE.Mesh(new THREE.BoxGeometry(.1,.13,.32),glow);
+      headlight.position.set(1.34,.63,0);
+      group.add(headlight);
+
+      const rider = new THREE.Group();
+      const limbMaterial = new THREE.MeshStandardMaterial({color:0x101923, emissive:color, emissiveIntensity:.16, metalness:.7, roughness:.48, flatShading:true});
+      const limb = (a,b,r=.105) => {
+        const av = new THREE.Vector3(...a), bv = new THREE.Vector3(...b);
+        const delta = bv.clone().sub(av);
+        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r*.78,r,delta.length(),6,1),limbMaterial);
+        mesh.position.copy(av.add(bv).multiplyScalar(.5));
+        mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),delta.normalize());
+        rider.add(mesh);
+      };
+      limb([-.33,1.13,0],[-.04,1.48,0],.14);
+      limb([-.04,1.48,0],[.28,1.24,0],.12);
+      limb([-.12,1.1,0],[-.45,.62,0],.12);
+      limb([.03,1.1,0],[.62,.72,0],.1);
+      limb([-.16,.96,0],[-.47,.56,0],.12);
+      limb([-.47,.56,0],[.07,.54,0],.115);
+      limb([.06,.98,0],[.66,.57,0],.12);
+      limb([.66,.57,0],[.92,.56,0],.1);
+      const helmet = new THREE.Mesh(new THREE.DodecahedronGeometry(.27,0),paint);
+      helmet.position.set(-.03,1.7,0);
+      helmet.scale.set(1.05,.88,1);
+      rider.add(helmet);
+      const visor = new THREE.Mesh(new THREE.BoxGeometry(.1,.12,.43),glow);
+      visor.position.set(.19,1.69,0);
+      rider.add(visor);
+      const disk = new THREE.Mesh(new THREE.TorusGeometry(.2,.045,4,8),glow);
+      disk.position.set(-.14,1.37,-.19);
+      rider.add(disk);
+      const diskCore = new THREE.Mesh(new THREE.CircleGeometry(.15,8),new THREE.MeshBasicMaterial({color,transparent:true,opacity:.58,side:THREE.DoubleSide}));
+      diskCore.position.set(-.14,1.37,-.195);
+      rider.add(diskCore);
+      const spine = new THREE.Mesh(new THREE.BoxGeometry(.07,.55,.06),glow);
+      spine.position.set(-.13,1.35,-.12);
+      rider.add(spine);
+      group.add(rider);
+      group.userData.wheels = wheelGroups;
+      return group;
+    }
+
+    function makeBike(id, x,z,dir,ai=true) {
+      const mesh = makeBikeMesh(COLORS[id]);
+      scene.add(mesh);
+      return {id,x,z,dir,ai,alive:true,mesh,trail:[],turnUsedThisCell:false,scoreTicks:0};
+    }
+
+    function placeBike(bike) {
+      bike.mesh.position.set(worldX(bike.x),0,worldZ(bike.z));
+      bike.mesh.rotation.y = -Math.atan2(DIRS[bike.dir].z,DIRS[bike.dir].x);
+    }
+
+    function clearRound() {
+      for (const bike of bikes) {
+        scene.remove(bike.mesh);
+        bike.mesh.traverse(object => {
+          if (object.geometry) object.geometry.dispose();
+          if (object.material) {
+            const materials=Array.isArray(object.material)?object.material:[object.material];
+            materials.forEach(material=>material.dispose());
+          }
+        });
+      }
+      bikes.length = 0;
+      while (trailRoot.children.length) {
+        const object = trailRoot.children[trailRoot.children.length-1];
+        trailRoot.remove(object);
+        if (object.geometry) object.geometry.dispose();
+      }
+      occupancy.clear();
+      const mid = 35;
+      player = makeBike(0,12,mid,0,false);
+      bikes.push(player);
+      bikes.push(makeBike(1,59,18,2,true));
+      bikes.push(makeBike(2,59,53,2,true));
+      bikes.push(makeBike(3,35,59,3,true));
+      for (const bike of bikes) {
+        placeBike(bike);
+        occupancy.set(cellKey(bike.x,bike.z),bike.id);
+      }
+      tick = 0;
+      accumulator = 0;
+      updateHUD();
+      drawMinimap();
+    }
+
+    function addTrail(bike, fromX,fromZ,toX,toZ) {
+      const dx = worldX(toX)-worldX(fromX), dz=worldZ(toZ)-worldZ(fromZ);
+      const length = Math.hypot(dx,dz);
+      const angle = Math.atan2(-dz,dx);
+      const position = new THREE.Vector3((worldX(fromX)+worldX(toX))/2,.57,(worldZ(fromZ)+worldZ(toZ))/2);
+      const core = new THREE.Mesh(new THREE.BoxGeometry(length+.09,.68,.07),trailMaterials[bike.id]);
+      core.position.copy(position);
+      core.rotation.y = angle;
+      trailRoot.add(core);
+      const aura = new THREE.Mesh(new THREE.BoxGeometry(length+.16,.8,.24),trailGlowMaterials[bike.id]);
+      aura.position.copy(position);
+      aura.rotation.y = angle;
+      trailRoot.add(aura);
+      bike.trail.push({x:toX,z:toZ});
+      occupancy.set(cellKey(toX,toZ),bike.id);
+    }
+
+    function ensureAudio() {
+      if (audio) {
+        if (audio.state === 'suspended') audio.resume();
+        return;
+      }
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      audio = new AudioContext();
+      engineOsc = audio.createOscillator();
+      engineOsc.type = 'sawtooth';
+      engineOsc.frequency.value = 52;
+      const filter = audio.createBiquadFilter();
+      filter.type = 'lowpass'; filter.frequency.value = 170;
+      engineGain = audio.createGain();
+      engineGain.gain.value = 0;
+      engineOsc.connect(filter); filter.connect(engineGain); engineGain.connect(audio.destination);
+      engineOsc.start();
+    }
+
+    function sound(type) {
+      ensureAudio();
+      if (!audio) return;
+      const now = audio.currentTime;
+      if (type === 'engine') {
+        engineGain.gain.cancelScheduledValues(now);
+        engineGain.gain.setTargetAtTime(state === 'running' ? .022 : 0,now,.18);
+        engineOsc.frequency.setTargetAtTime(48 + Math.min(42,tick*.18),now,.25);
+        return;
+      }
+      const osc = audio.createOscillator();
+      const gain = audio.createGain();
+      osc.type = type === 'crash' ? 'sawtooth' : 'triangle';
+      const start = type === 'crash' ? 180 : type === 'turn' ? 500 : 660;
+      osc.frequency.setValueAtTime(start,now);
+      osc.frequency.exponentialRampToValueAtTime(type === 'crash' ? 42 : start*1.6,now+.18);
+      gain.gain.setValueAtTime(type === 'crash' ? .16 : .055,now);
+      gain.gain.exponentialRampToValueAtTime(.001,now+.2);
+      osc.connect(gain); gain.connect(audio.destination);
+      osc.start(now); osc.stop(now+.21);
+    }
+
+    function updateHUD() {
+      document.getElementById('score').textContent = String(score).padStart(6,'0');
+      document.getElementById('life-display').textContent = Array.from({length:3},(_,i)=>i<lives?'♥':'·').join(' ');
+      document.getElementById('round').textContent = String(round).padStart(2,'0');
+    }
+
+    function setStatus(title,copy,action) {
+      document.getElementById('status-title').textContent = title;
+      document.getElementById('status-copy').textContent = copy;
+      document.getElementById('status-action').textContent = action;
+      document.getElementById('status').style.display = 'grid';
+    }
+    function hideStatus() { document.getElementById('status').style.display='none'; }
+
+    function beginCountdown() {
+      ensureAudio();
+      state = 'countdown';
+      countdownAt = performance.now();
+      setStatus('3','Prepare to ride.','');
+    }
+    function startGame() {
+      score = 0; lives = 3; round = 1;
+      clearRound();
+      beginCountdown();
+    }
+    function nextRound() {
+      round++;
+      clearRound();
+      beginCountdown();
+    }
+
+    function turn(bike,amount) {
+      if (state !== 'running' || !bike.alive || bike.turnUsedThisCell) return;
+      bike.dir = (bike.dir + amount + 4) % 4;
+      bike.turnUsedThisCell = true;
+      placeBike(bike);
+      if (bike === player) sound('turn');
+    }
+    function absoluteTurn(direction) {
+      const difference = (direction - player.dir + 4) % 4;
+      if (difference === 1) turn(player,1);
+      else if (difference === 3) turn(player,-1);
+    }
+
+    function isFree(x,z,ownId) {
+      return x>0 && z>0 && x<SIZE-1 && z<SIZE-1 && !occupancy.has(cellKey(x,z)) &&
+        !bikes.some(b => b.alive && b.id !== ownId && b.x===x && b.z===z);
+    }
+    function futureSafe(bike,dir,steps=4) {
+      const d=DIRS[dir];
+      for (let i=1;i<=steps;i++) if (!isFree(bike.x+d.x*i,bike.z+d.z*i,bike.id)) return false;
+      return true;
+    }
+
+    function chooseAI(bike) {
+      if (bike.turnUsedThisCell) return;
+      const choices = [(bike.dir+1)%4,(bike.dir+3)%4,bike.dir];
+      const safe = choices.filter(d => futureSafe(bike,d,5));
+      if (!safe.length) return;
+      const forwardSafe = safe.includes(bike.dir);
+      const nearPlayer = Math.abs(bike.x-player.x)+Math.abs(bike.z-player.z) < 14;
+      let selected = bike.dir;
+      if (!forwardSafe || (safe.length>1 && Math.random()<.085)) {
+        const target = nearPlayer && Math.random()<.55 ? player : null;
+        safe.sort((a,b) => {
+          const da=DIRS[a], db=DIRS[b];
+          const sa=spaceScore(bike,da,target), sb=spaceScore(bike,db,target);
+          return sb-sa + (Math.random()-.5)*1.5;
+        });
+        selected=safe[0];
+      }
+      if (selected !== bike.dir) {
+        bike.dir=selected;
+        bike.turnUsedThisCell=true;
+        placeBike(bike);
+      }
+    }
+    function spaceScore(bike,direction,target) {
+      const d=DIRS[direction];
+      let scoreSpace=0;
+      for (let i=1;i<=11;i++) {
+        if (!isFree(bike.x+d.x*i,bike.z+d.z*i,bike.id)) break;
+        scoreSpace++;
+      }
+      if (target) {
+        const playerDistance=Math.abs(bike.x+d.x*4-target.x)+Math.abs(bike.z+d.z*4-target.z);
+        scoreSpace += Math.max(-2,6-playerDistance)*.2;
+      }
+      return scoreSpace;
+    }
+
+    function killBike(bike) {
+      if (!bike.alive) return;
+      bike.alive=false;
+      bike.mesh.visible=false;
+      if (bike===player) {
+        lives--;
+        sound('crash');
+      } else {
+        score += 150;
+        sound('derez');
+      }
+      updateHUD();
+    }
+
+    function moveStep() {
+      for (const bike of bikes) if (bike.alive && bike.ai) chooseAI(bike);
+      const proposals = new Map();
+      for (const bike of bikes) {
+        if (!bike.alive) continue;
+        const d=DIRS[bike.dir];
+        proposals.set(bike.id,{x:bike.x+d.x,z:bike.z+d.z,fromX:bike.x,fromZ:bike.z});
+      }
+      const doomed = new Set();
+      for (const bike of bikes) {
+        if (!bike.alive) continue;
+        const p=proposals.get(bike.id);
+        if (!p || p.x<=0 || p.z<=0 || p.x>=SIZE-1 || p.z>=SIZE-1 || occupancy.has(cellKey(p.x,p.z))) doomed.add(bike.id);
+      }
+      for (let i=0;i<bikes.length;i++) for (let j=i+1;j<bikes.length;j++) {
+        const a=bikes[i], b=bikes[j];
+        if (!a.alive || !b.alive) continue;
+        const pa=proposals.get(a.id), pb=proposals.get(b.id);
+        if (pa.x===pb.x && pa.z===pb.z) { doomed.add(a.id); doomed.add(b.id); }
+        if (pa.x===b.x && pa.z===b.z && pb.x===a.x && pb.z===a.z) { doomed.add(a.id); doomed.add(b.id); }
+      }
+      for (const bike of bikes) if (doomed.has(bike.id)) killBike(bike);
+      for (const bike of bikes) {
+        if (!bike.alive || doomed.has(bike.id)) continue;
+        const p=proposals.get(bike.id);
+        bike.x=p.x; bike.z=p.z;
+        bike.turnUsedThisCell=false;
+        bike.mesh.position.set(worldX(bike.x),0,worldZ(bike.z));
+        addTrail(bike,p.fromX,p.fromZ,p.x,p.z);
+        bike.scoreTicks++;
+        if (bike===player) score += 1;
+      }
+      updateHUD();
+      drawMinimap();
+      if (!player.alive) {
+        if (lives<=0) {
+          state='gameover'; stateAt=performance.now(); sound('engine');
+          setStatus('DEREZZED','Final score: '+String(score).padStart(6,'0'),'PRESS ENTER OR TAP TO RIDE AGAIN');
+        } else {
+          state='roundover'; stateAt=performance.now();
+          setStatus('DEREZZED','Life lost · '+lives+' remaining','NEXT RUN STARTING');
+        }
+        sound('engine');
+        return;
+      }
+      if (bikes.slice(1).every(b=>!b.alive)) {
+        state='roundover'; stateAt=performance.now();
+        setStatus('GRID CLEARED','All opponents derezzed','NEXT ROUND');
+      }
+    }
+
+    function drawMinimap() {
+      const ratio=window.devicePixelRatio||1;
+      const rect=mapCanvas.getBoundingClientRect();
+      const w=Math.max(1,Math.floor(rect.width*ratio)), h=Math.max(1,Math.floor(rect.height*ratio));
+      if (mapCanvas.width!==w || mapCanvas.height!==h) { mapCanvas.width=w; mapCanvas.height=h; }
+      mapCtx.fillStyle='#020910'; mapCtx.fillRect(0,0,w,h);
+      mapCtx.strokeStyle='rgba(0,210,245,.14)'; mapCtx.lineWidth=1;
+      for (let i=1;i<6;i++) {
+        mapCtx.beginPath(); mapCtx.moveTo(w*i/6,0); mapCtx.lineTo(w*i/6,h); mapCtx.stroke();
+        mapCtx.beginPath(); mapCtx.moveTo(0,h*i/6); mapCtx.lineTo(w,h*i/6); mapCtx.stroke();
+      }
+      for (const bike of bikes) {
+        mapCtx.strokeStyle=COLOR_CSS[bike.id]; mapCtx.globalAlpha=.72; mapCtx.lineWidth=Math.max(1,ratio*1.3);
+        if (bike.trail.length) {
+          mapCtx.beginPath();
+          const first=bike.trail[0];
+          mapCtx.moveTo((first.x+.5)/SIZE*w,(first.z+.5)/SIZE*h);
+          for (let i=1;i<bike.trail.length;i++) mapCtx.lineTo((bike.trail[i].x+.5)/SIZE*w,(bike.trail[i].z+.5)/SIZE*h);
+          mapCtx.stroke();
+        }
+        if (bike.alive) {
+          mapCtx.globalAlpha=1;
+          mapCtx.shadowColor=COLOR_CSS[bike.id]; mapCtx.shadowBlur=8*ratio;
+          mapCtx.fillStyle=COLOR_CSS[bike.id];
+          mapCtx.beginPath(); mapCtx.arc((bike.x+.5)/SIZE*w,(bike.z+.5)/SIZE*h,2.4*ratio,0,Math.PI*2); mapCtx.fill();
+          mapCtx.shadowBlur=0;
+        }
+      }
+      mapCtx.globalAlpha=1;
+    }
+
+    function updateCamera(delta) {
+      if (state==='gameover' || state==='roundover') {
+        const t=(performance.now()-stateAt)*.00019;
+        const target=new THREE.Vector3(worldX(player.x),.4,worldZ(player.z));
+        camera.position.set(target.x+Math.cos(t)*27,14,target.z+Math.sin(t)*27);
+        camera.lookAt(target);
+        return;
+      }
+      if (!player) return;
+      if (cameraMode===1) {
+        const target=new THREE.Vector3(0,0,0);
+        camera.position.lerp(new THREE.Vector3(0,72,0.01),Math.min(1,delta*3.2));
+        camera.up.set(0,0,-1);
+        camera.lookAt(target);
+      } else {
+        camera.up.set(0,1,0);
+        const d=DIRS[player.dir];
+        const target=new THREE.Vector3(worldX(player.x),.8,worldZ(player.z));
+        const ideal=new THREE.Vector3(target.x-d.x*8,5.2,target.z-d.z*8);
+        camera.position.lerp(ideal,Math.min(1,delta*4.5));
+        camera.lookAt(new THREE.Vector3(target.x+d.x*4,.8,target.z+d.z*4));
+      }
+    }
+
+    function animate(now) {
+      requestAnimationFrame(animate);
+      const delta=Math.min(.05,(now-lastFrame)/1000||0);
+      lastFrame=now;
+      if (state==='countdown') {
+        const n=3-Math.floor((now-countdownAt)/700);
+        if (n>0) document.getElementById('status-title').textContent=String(n);
+        else {
+          state='running'; hideStatus(); sound('engine');
+        }
+      }
+      if (state==='running') {
+        accumulator+=delta;
+        const step=currentSpeed();
+        while (accumulator>=step && state==='running') {
+          accumulator-=step;
+          tick++;
+          moveStep();
+        }
+        if (engineGain && audio) engineGain.gain.setTargetAtTime(.018,audio.currentTime,.3);
+      } else if (engineGain && audio) {
+        engineGain.gain.setTargetAtTime(0,audio.currentTime,.12);
+      }
+      if (state==='roundover' && now-stateAt>1500) {
+        if (player.alive) nextRound();
+        else {
+          clearRound();
+          beginCountdown();
+        }
+      }
+      for (const bike of bikes) {
+        if (!bike.alive) continue;
+        const wheels=bike.mesh.userData.wheels;
+        for (const wheel of wheels) wheel.rotation.z -= delta*(state==='running'?5.2:0);
+      }
+      updateCamera(delta);
+      renderer.render(scene,camera);
+    }
+
+    function resize() {
+      const width=window.innerWidth, height=window.innerHeight;
+      renderer.setSize(width,height,false);
+      camera.aspect=width/height;
+      camera.fov=width<height?62:54;
+      camera.updateProjectionMatrix();
+      drawMinimap();
+    }
+    window.addEventListener('resize',resize,{passive:true});
+    function pauseToggle() {
+      if (state==='running') {
+        state='paused'; setStatus('PAUSED','The grid is waiting.','PRESS P OR ENTER TO RESUME');
+      } else if (state==='paused') {
+        state='running'; hideStatus(); lastFrame=performance.now();
+      }
+    }
+    window.addEventListener('keydown',event=>{
+      const key=event.key.toLowerCase();
+      if (['arrowleft','arrowright','arrowup','arrowdown',' '].includes(key)) event.preventDefault();
+      if (key==='p') { pauseToggle(); return; }
+      if (key==='c') {
+        cameraMode=1-cameraMode;
+        document.getElementById('camera-label').textContent=cameraMode?'OVERHEAD CAM · C TO SWITCH':'CHASE CAM · C TO SWITCH';
+        return;
+      }
+      if (key==='enter' || key===' ') {
+        ensureAudio();
+        if (state==='ready'||state==='gameover') startGame();
+        else if (state==='paused') pauseToggle();
+        return;
+      }
+      if (state!=='running') return;
+      if (key==='a' || key==='arrowleft') turn(player,-1);
+      else if (key==='d' || key==='arrowright') turn(player,1);
+      else if (key==='arrowup') absoluteTurn(3);
+      else if (key==='arrowdown') absoluteTurn(1);
+    });
+
+    function attachTurnButton(id,amount) {
+      const button=document.getElementById(id);
+      button.addEventListener('pointerdown',event=>{event.preventDefault(); ensureAudio(); turn(player,amount);});
+    }
+    attachTurnButton('turn-left',-1);
+    attachTurnButton('turn-right',1);
+    document.getElementById('status').addEventListener('pointerdown',()=>{
+      ensureAudio();
+      if (state==='ready'||state==='gameover') startGame();
+      else if (state==='paused') pauseToggle();
+    });
+    document.getElementById('game').addEventListener('pointerdown',event=>{
+      if (event.target.closest('button') || event.target.closest('#status')) return;
+      pointerStart={x:event.clientX,y:event.clientY};
+    });
+    document.getElementById('game').addEventListener('pointerup',event=>{
+      if (!pointerStart) return;
+      const dx=event.clientX-pointerStart.x, dy=event.clientY-pointerStart.y;
+      pointerStart=null;
+      if (Math.max(Math.abs(dx),Math.abs(dy))<24) return;
+      ensureAudio();
+      const d=DIRS[player.dir];
+      const left={x:d.z,z:-d.x}, right={x:-d.z,z:d.x};
+      const ux=dx/Math.hypot(dx,dy), uz=dy/Math.hypot(dx,dy);
+      if (ux*left.x+uz*left.z > ux*right.x+uz*right.z) turn(player,-1);
+      else turn(player,1);
+    });
+
+    clearRound();
+    resize();
+    setStatus('LIGHT CYCLE','Outmaneuver the grid. Leave no way out.','PRESS ENTER OR TAP TO START');
+    requestAnimationFrame(animate);
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+      window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(error=>console.error('Service worker registration failed:',error)));
+    }
+  })();
+  </script>
+</body>
+</html>
