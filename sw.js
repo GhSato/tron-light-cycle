@@ -1,4 +1,4 @@
-const CACHE_NAME = 'light-cycle-v2';
+const CACHE_NAME = 'light-cycle-v3';
 const THREE_URL = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
 const APP_URLS = ['./', './index.html', './manifest.webmanifest'];
 
