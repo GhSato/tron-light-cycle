@@ -432,8 +432,7 @@
       if (!forwardSafe || (safe.length>1 && Math.random()<.085)) {
         const target = nearPlayer && Math.random()<.55 ? player : null;
         safe.sort((a,b) => {
-          const da=DIRS[a], db=DIRS[b];
-          const sa=spaceScore(bike,da,target), sb=spaceScore(bike,db,target);
+          const sa=spaceScore(bike,a,target), sb=spaceScore(bike,b,target);
           return sb-sa + (Math.random()-.5)*1.5;
         });
         selected=safe[0];
@@ -684,6 +683,11 @@
         return;
       }
       ensureAudio();
+      if (cameraMode===0) {
+        const leftSwipe=Math.abs(dx)>=Math.abs(dy)?dx<0:dy<0;
+        turn(player,leftSwipe?-1:1);
+        return;
+      }
       const d=DIRS[player.dir];
       const left={x:d.z,z:-d.x}, right={x:-d.z,z:d.x};
       const ux=dx/Math.hypot(dx,dy), uz=dy/Math.hypot(dx,dy);
