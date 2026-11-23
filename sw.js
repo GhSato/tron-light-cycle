@@ -1,29 +1,38 @@
-const CACHE = "tron-light-cycle-v1";
-const ASSETS = [
-  "./",
-  "./index.html",
-  "./manifest.webmanifest",
-  "./icon-192.png",
-  "./icon-512.png",
-  "./icon-maskable-512.png",
-  "./apple-touch-icon.png"
-];
-self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+const CACHE_NAME = 'light-cycle-v1';
+const THREE_URL = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+const APP_URLS = ['./', './index.html', './manifest.webmanifest'];
+
+self.addEventListener('install', event => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.addAll(APP_URLS);
+    const response = await fetch(new Request(THREE_URL, { mode: 'no-cors' }));
+    if (response.ok || response.type === 'opaque') await cache.put(THREE_URL, response);
+    else throw new Error(`Three.js cache request failed: ${response.status}`);
+    await self.skipWaiting();
+  })());
 });
-self.addEventListener("activate", e => {
-  e.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
+
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(key => key.startsWith('light-cycle-') && key !== CACHE_NAME).map(key => caches.delete(key)));
+    await self.clients.claim();
+  })());
 });
-self.addEventListener("fetch", e => {
-  if (e.request.method !== "GET") return;
-  e.respondWith(
-    caches.match(e.request, {ignoreSearch: true}).then(hit => hit || fetch(e.request).then(res => {
-      const copy = res.clone();
-      caches.open(CACHE).then(c => c.put(e.request, copy));
-      return res;
-    }).catch(() => caches.match("./index.html")))
-  );
+
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  const url = new URL(request.url);
+  if (request.method !== 'GET') return;
+  if (url.origin === self.location.origin || request.url === THREE_URL) {
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const cached = await cache.match(request, { ignoreSearch: url.origin === self.location.origin });
+      if (cached) return cached;
+      const response = await fetch(request);
+      if (response.ok || response.type === 'opaque') await cache.put(request, response.clone());
+      return response;
+    })());
+  }
 });
